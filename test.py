@@ -37,8 +37,8 @@ class Dataset(torch.utils.data.Dataset):
             image = augmented['image']
             mask = augmented['mask']
         else:
-            image = cv2.resize(image, (352, 352))
-            mask = cv2.resize(mask, (352, 352)) 
+            image = cv2.resize(image, (384, 384))
+            mask = cv2.resize(mask, (384, 384)) 
 
         image = image.astype('float32') / 255
         image = image.transpose((2, 0, 1))
@@ -138,6 +138,12 @@ if __name__ == '__main__':
                         default='')
     parser.add_argument('--test_path', type=str,
                         default='./data/TestDataset', help='path to dataset')
+    parser.add_argument('--num_classes', type=int,
+                        default=1, help='number output classes')
+    parser.add_argument('--bottleneck', type=bool,
+                        default=True, help='use bottle neck in reverse attention or not')
+    parser.add_argument('--neo', type=bool,
+                        default=False, help='use Neo Reverse Attention or not (Softmax Reverse Attentions)')
     args = parser.parse_args()
 
     model = UNet(backbone=dict(
@@ -147,6 +153,9 @@ if __name__ == '__main__':
                 neck=None,
                 auxiliary_head=None,
                 train_cfg=dict(),
+                num_classes=args.num_classes,
+                compound_coef=4,
+                neo=args.neo,numrepeat = 4,bottleneck=args.bottleneck,
                 test_cfg=dict(mode='whole'),
                 pretrained='pretrained/mit_{}.pth'.format(args.backbone)).cuda()
 

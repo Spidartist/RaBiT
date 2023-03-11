@@ -23,9 +23,157 @@ from albumentations.augmentations import transforms
 from albumentations.core.composition import Compose, OneOf
 
 from mmseg import __version__
-from mmseg.models.segmentors import ColonFormer as UNet
+from mmseg.models.segmentors import BiRAFormer as UNet
+
+from PIL import Image
+from keras.utils.np_utils import to_categorical   
+# Convert numpy data to tensorflow data
+'''
+We need segent 3 classes:
+    + 0 if the pixel is part of the image background (denoted by black color);
+    + 1 if the pixel is part of a non-neoplastic polyp (denoted by green color);
+    + 2 if the pixel is part of a neoplastic polyp (denoted by red color).
+'''
+import random
+import imgaug
+from imgaug import augmenters as iaa
+from keras.preprocessing.image import ImageDataGenerator
+HEIGHT = 384
+sometimes = lambda aug: iaa.Sometimes(.5, aug)   
+aug_pipe = iaa.Sequential(
+            [      
 
 
+                iaa.SomeOf((0, 3),
+                    [
+                       # sometimes(iaa.Superpixels(p_replace=(0, 1.0), n_segments=(20, 200))), # convert images into their superpixel representation
+                        iaa.OneOf([
+                           iaa.GaussianBlur((0, 1.5)), # blur images with a sigma between 0 and 3.0
+                           iaa.AverageBlur(k=(2,5)), # blur image using local means with kernel sizes between 2 and 7
+                           iaa.MedianBlur(k=(3, 5)), # blur image using local medians with kernel sizes between 2 and 7
+                        ]),
+                        iaa.Sharpen(alpha=(0, 0.02), lightness=(0.95, 1.05)), # sharpen images
+                        imgaug.augmenters.blur.MotionBlur(k=(3, 7), angle=(0, 360)),
+                       iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.02*255), per_channel=0.5), # add gaussian noise to images
+                       
+                        
+                        iaa.Add((-5, 5), per_channel=0.5), 
+                        iaa.Multiply((0.95, 1.05), per_channel=0.5), 
+                        iaa.ContrastNormalization((0.95, 1.05), per_channel=0.5), # improve or worsen the contrast
+                    ],
+                    random_order=True
+                )
+            ],
+            random_order=True
+        )
+image_datagen_args = {
+		'shear_range': 0.1,
+		'zoom_range': 0.2,
+		'width_shift_range': 0.25,
+		'height_shift_range': 0.25,
+		'rotation_range': 180,
+		'horizontal_flip': True,
+		'vertical_flip': True,
+        'fill_mode':'constant'
+	}
+image_datagen = ImageDataGenerator(**image_datagen_args)
+def augment(image,mask):
+    #image *= 255
+    image = image.astype(np.uint8)
+    if random.random()<0.5:
+        seed = random.randint(0,1000000000)
+        params = image_datagen.get_random_transform(image.shape,seed = seed)
+        image = image_datagen.apply_transform(image, params)
+        params = image_datagen.get_random_transform(mask.shape,seed = seed)
+        mask = image_datagen.apply_transform(np.expand_dims(mask,-1), params)[:,:,0]
+    if random.random()<0.5:
+        image = aug_pipe.augment_image(np.array(image).astype(np.uint8)) 
+    #image = image/255.
+    return image.astype(np.float32),mask
+def read_image(image_path):
+    image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    image = cv2.resize(image, (HEIGHT, HEIGHT))
+   # image = image/255.0
+  #  image = image.astype(np.float32)
+    return image   
+def read_mask(mask_path):
+    image = cv2.imread(mask_path)
+    
+    image = cv2.resize(image, (HEIGHT, HEIGHT))
+    """
+    mask = np.zeros((HEIGHT,WIDTH))
+    mask[image[:,:,1]>10]=1
+    mask[image[:,:,2]>10]=2
+    """
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    # lower boundary RED color range values; Hue (0 - 10)
+    lower1 = np.array([0, 100, 20])
+    upper1 = np.array([10, 255, 255])
+    # upper boundary RED color range values; Hue (160 - 180)
+    lower2 = np.array([160,100,20])
+    upper2 = np.array([179,255,255])
+    lower_mask = cv2.inRange(image, lower1, upper1)
+    upper_mask = cv2.inRange(image, lower2, upper2)
+
+    red_mask = lower_mask + upper_mask;
+    red_mask[red_mask != 0] = 2
+    
+    # boundary RED color range values; Hue (36 - 70)
+    green_mask = cv2.inRange(image, (36, 25, 25), (70, 255,255))
+    green_mask[green_mask != 0] = 1
+    
+    full_mask = cv2.bitwise_or(red_mask, green_mask)
+    full_mask = full_mask.astype(np.uint8)
+    full_mask= cv2.dilate(full_mask, np.ones((5,5)), iterations=1)
+    full_mask = cv2.erode(full_mask, np.ones((5,5)), iterations=1)  
+    return full_mask.astype(np.uint8)
+import random
+class NeoDataset(torch.utils.data.Dataset):
+
+    def __init__(self, img_paths, mask_paths, aug=True, transform=None):
+        self.img_paths = img_paths
+        self.mask_paths = mask_paths
+        self.aug = aug
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+      
+        img_path = self.img_paths[idx]
+        mask_path = self.mask_paths[idx]
+        # image = imread(img_path)
+        # mask = imread(mask_path)
+       # image = cv2.imread(img_path)
+       # print(img_path,mask_path)
+        image = read_image(img_path)# cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        mask = read_mask(mask_path)#cv2.imread(mask_path, 0)
+        # name = self.img_paths[idx].split('/')[-1]
+
+        if self.transform is not None:
+            
+           # augmented = self.transform(image=image, mask=mask)
+            #image = augmented['image']
+           # mask = augmented['mask']
+            image,mask = augment(image,mask )
+            image = cv2.resize(image, (HEIGHT, HEIGHT))
+            mask = cv2.resize(mask, (HEIGHT, HEIGHT),interpolation=cv2.INTER_NEAREST) 
+        else:
+            image = cv2.resize(image, (HEIGHT, HEIGHT))
+            mask = cv2.resize(mask, (HEIGHT, HEIGHT),) 
+
+        image = image.astype('float32') / 255.
+        image = image.transpose((2, 0, 1))
+        
+        #mask = mask[:,:,np.newaxis]
+        
+        mask = to_categorical(mask, num_classes=3)
+        mask = mask.astype('float32')
+        mask = mask.transpose((2, 0, 1))
+       # mask[:,0,:,:]=0
+        #print(mask.shape)
+        return np.asarray(image), np.asarray(mask)
 class Dataset(torch.utils.data.Dataset):
     
     def __init__(self, img_paths, mask_paths, aug=True, transform=None):
@@ -49,8 +197,8 @@ class Dataset(torch.utils.data.Dataset):
             image = augmented['image']
             mask = augmented['mask']
         else:
-            image = cv2.resize(image, (352, 352))
-            mask = cv2.resize(mask, (352, 352)) 
+            image = cv2.resize(image, (384, 384))
+            mask = cv2.resize(mask, (384, 384)) 
 
         image = image.astype('float32') / 255
         image = image.transpose((2, 0, 1))
@@ -188,25 +336,46 @@ def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
         'scheduler': lr_scheduler.state_dict()
     }
     torch.save(checkpoint, ckpt_path)
-
+from albumentations.augmentations.geometric import  resize,rotate
+import albumentations.augmentations.crops.transforms as crop
+import albumentations.augmentations.transforms as transforms
+train_transform = Compose([
+            rotate.RandomRotate90(),
+            transforms.Flip(),
+            transforms.HueSaturationValue(),
+            transforms.RandomBrightnessContrast(),
+            transforms.GaussianBlur(),
+            transforms.Transpose(),
+            OneOf([
+                crop.RandomCrop(224, 224, p=1),
+                crop.CenterCrop(224, 224, p=1)
+            ], p=0.2),
+            resize.Resize(384, 384)
+        ], p=0.5)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_epochs', type=int,
-                        default=20, help='epoch number')
+                        default=30, help='epoch number')
     parser.add_argument('--backbone', type=str,
                         default='b3', help='backbone version')
+    parser.add_argument('--num_classes', type=int,
+                        default=1, help='number output classes')
+    parser.add_argument('--bottleneck', type=bool,
+                        default=True, help='use bottle neck in reverse attention or not')
+    parser.add_argument('--neo', type=bool,
+                        default=False, help='use Neo Reverse Attention or not (Softmax Reverse Attentions)')
     parser.add_argument('--init_lr', type=float,
                         default=1e-4, help='learning rate')
     parser.add_argument('--batchsize', type=int,
                         default=8, help='training batch size')
     parser.add_argument('--init_trainsize', type=int,
-                        default=352, help='training dataset size')
+                        default=384, help='training dataset size')
     parser.add_argument('--clip', type=float,
                         default=0.5, help='gradient clipping margin')
     parser.add_argument('--train_path', type=str,
                         default='./data/TrainDataset', help='path to train dataset')
     parser.add_argument('--train_save', type=str,
-                        default='ConlonFormerB3')
+                        default='RaBiTB3')
     parser.add_argument('--resume_path', type=str, help='path to checkpoint for resume training'
                         default='')
     args = parser.parse_args()
@@ -223,8 +392,10 @@ if __name__ == '__main__':
     train_mask_paths = glob('{}/masks/*'.format(args.train_path))
     train_img_paths.sort()
     train_mask_paths.sort()
-
-    train_dataset = Dataset(train_img_paths, train_mask_paths)
+    if args.num_classes ==1:
+        train_dataset = Dataset(train_img_paths, train_mask_paths, transform =train_transform)
+    elif args.num_classes ==3:
+        train_dataset = NeoDataset(train_img_paths, train_mask_paths, transform =train_transform )
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.batchsize,
@@ -238,20 +409,13 @@ if __name__ == '__main__':
     model = UNet(backbone=dict(
                     type='mit_{}'.format(args.backbone),
                     style='pytorch'), 
-                decode_head=dict(
-                    type='UPerHead',
-                    in_channels=[64, 128, 320, 512],
-                    in_index=[0, 1, 2, 3],
-                    channels=128,
-                    dropout_ratio=0.1,
-                    num_classes=1,
-                    norm_cfg=dict(type='BN', requires_grad=True),
-                    align_corners=False,
-                    decoder_params=dict(embed_dim=768),
-                    loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
+                decode_head=None,
                 neck=None,
                 auxiliary_head=None,
                 train_cfg=dict(),
+                num_classes=args.num_classes,
+                compound_coef=4,
+                neo=args.neo,numrepeat = 4,bottleneck=args.bottleneck,
                 test_cfg=dict(mode='whole'),
                 pretrained='pretrained/mit_{}.pth'.format(args.backbone)).cuda()
 
