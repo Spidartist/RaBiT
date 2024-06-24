@@ -1,0 +1,1 @@
+python train.py --backbone b3 --train_path ./data/TrainDataset --train_save RaBiT

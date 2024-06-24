@@ -9,7 +9,7 @@ import cv2
 from tqdm import tqdm
 from glob import glob
 import matplotlib.pyplot as plt
-
+import json
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -26,7 +26,7 @@ from mmseg import __version__
 from mmseg.models.segmentors import BiRAFormer as UNet
 
 from PIL import Image
-from keras.utils.np_utils import to_categorical   
+# from keras.utils.np_utils import to_categorical   
 # Convert numpy data to tensorflow data
 '''
 We need segent 3 classes:
@@ -37,8 +37,14 @@ We need segent 3 classes:
 import random
 import imgaug
 from imgaug import augmenters as iaa
-from keras.preprocessing.image import ImageDataGenerator
+# from keras.preprocessing.image import ImageDataGenerator
 HEIGHT = 384
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+device = torch.device('cuda:0')
+torch.cuda.set_device(device)
+
 sometimes = lambda aug: iaa.Sometimes(.5, aug)   
 aug_pipe = iaa.Sequential(
             [      
@@ -76,20 +82,20 @@ image_datagen_args = {
 		'vertical_flip': True,
         'fill_mode':'constant'
 	}
-image_datagen = ImageDataGenerator(**image_datagen_args)
-def augment(image,mask):
-    #image *= 255
-    image = image.astype(np.uint8)
-    if random.random()<0.5:
-        seed = random.randint(0,1000000000)
-        params = image_datagen.get_random_transform(image.shape,seed = seed)
-        image = image_datagen.apply_transform(image, params)
-        params = image_datagen.get_random_transform(mask.shape,seed = seed)
-        mask = image_datagen.apply_transform(np.expand_dims(mask,-1), params)[:,:,0]
-    if random.random()<0.5:
-        image = aug_pipe.augment_image(np.array(image).astype(np.uint8)) 
-    #image = image/255.
-    return image.astype(np.float32),mask
+# image_datagen = ImageDataGenerator(**image_datagen_args)
+# def augment(image,mask):
+#     #image *= 255
+#     image = image.astype(np.uint8)
+#     if random.random()<0.5:
+#         seed = random.randint(0,1000000000)
+#         params = image_datagen.get_random_transform(image.shape,seed = seed)
+#         image = image_datagen.apply_transform(image, params)
+#         params = image_datagen.get_random_transform(mask.shape,seed = seed)
+#         mask = image_datagen.apply_transform(np.expand_dims(mask,-1), params)[:,:,0]
+#     if random.random()<0.5:
+#         image = aug_pipe.augment_image(np.array(image).astype(np.uint8)) 
+#     #image = image/255.
+#     return image.astype(np.float32),mask
 def read_image(image_path):
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
     image = cv2.resize(image, (HEIGHT, HEIGHT))
@@ -128,66 +134,100 @@ def read_mask(mask_path):
     full_mask = cv2.erode(full_mask, np.ones((5,5)), iterations=1)  
     return full_mask.astype(np.uint8)
 import random
-class NeoDataset(torch.utils.data.Dataset):
+# class NeoDataset(torch.utils.data.Dataset):
 
-    def __init__(self, img_paths, mask_paths, aug=True, transform=None):
-        self.img_paths = img_paths
-        self.mask_paths = mask_paths
-        self.aug = aug
-        self.transform = transform
+#     def __init__(self, img_paths, mask_paths, aug=True, transform=None):
+#         self.img_paths = img_paths
+#         self.mask_paths = mask_paths
+#         self.aug = aug
+#         self.transform = transform
 
-    def __len__(self):
-        return len(self.img_paths)
+#     def __len__(self):
+#         return len(self.img_paths)
 
-    def __getitem__(self, idx):
+#     def __getitem__(self, idx):
       
-        img_path = self.img_paths[idx]
-        mask_path = self.mask_paths[idx]
-        # image = imread(img_path)
-        # mask = imread(mask_path)
-       # image = cv2.imread(img_path)
-       # print(img_path,mask_path)
-        image = read_image(img_path)# cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        mask = read_mask(mask_path)#cv2.imread(mask_path, 0)
-        # name = self.img_paths[idx].split('/')[-1]
+#         img_path = self.img_paths[idx]
+#         mask_path = self.mask_paths[idx]
+#         # image = imread(img_path)
+#         # mask = imread(mask_path)
+#        # image = cv2.imread(img_path)
+#        # print(img_path,mask_path)
+#         image = read_image(img_path)# cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+#         mask = read_mask(mask_path)#cv2.imread(mask_path, 0)
+#         # name = self.img_paths[idx].split('/')[-1]
 
-        if self.transform is not None:
+#         if self.transform is not None:
             
-           # augmented = self.transform(image=image, mask=mask)
-            #image = augmented['image']
-           # mask = augmented['mask']
-            image,mask = augment(image,mask )
-            image = cv2.resize(image, (HEIGHT, HEIGHT))
-            mask = cv2.resize(mask, (HEIGHT, HEIGHT),interpolation=cv2.INTER_NEAREST) 
-        else:
-            image = cv2.resize(image, (HEIGHT, HEIGHT))
-            mask = cv2.resize(mask, (HEIGHT, HEIGHT),) 
+#            # augmented = self.transform(image=image, mask=mask)
+#             #image = augmented['image']
+#            # mask = augmented['mask']
+#             image,mask = augment(image,mask )
+#             image = cv2.resize(image, (HEIGHT, HEIGHT))
+#             mask = cv2.resize(mask, (HEIGHT, HEIGHT),interpolation=cv2.INTER_NEAREST) 
+#         else:
+#             image = cv2.resize(image, (HEIGHT, HEIGHT))
+#             mask = cv2.resize(mask, (HEIGHT, HEIGHT),) 
 
-        image = image.astype('float32') / 255.
-        image = image.transpose((2, 0, 1))
+#         image = image.astype('float32') / 255.
+#         image = image.transpose((2, 0, 1))
         
-        #mask = mask[:,:,np.newaxis]
+#         #mask = mask[:,:,np.newaxis]
         
-        mask = to_categorical(mask, num_classes=3)
-        mask = mask.astype('float32')
-        mask = mask.transpose((2, 0, 1))
-       # mask[:,0,:,:]=0
-        #print(mask.shape)
-        return np.asarray(image), np.asarray(mask)
+#         mask = to_categorical(mask, num_classes=3)
+#         mask = mask.astype('float32')
+#         mask = mask.transpose((2, 0, 1))
+#        # mask[:,0,:,:]=0
+#         #print(mask.shape)
+#         return np.asarray(image), np.asarray(mask)
 class Dataset(torch.utils.data.Dataset):
     
-    def __init__(self, img_paths, mask_paths, aug=True, transform=None):
-        self.img_paths = img_paths
-        self.mask_paths = mask_paths
+    def __init__(self, img_paths, mask_paths, aug=True, transform=None, train_ratio=1.0, mode="train"):
         self.aug = aug
         self.transform = transform
+        self.train_ratio = train_ratio
+        self.path = "/mnt/quanhd/endoscopy/public_dataset.json"
+        self.root_path = "/home/s/DATA/"
+        self.mode = mode
+        self.load_data_from_json()
 
     def __len__(self):
-        return len(self.img_paths)
+        return len(self.image_paths)
+    
+    def load_data_from_json(self):
+        with open(self.path) as f:
+            data = json.load(f)
+        if self.mode == "train":
+            all_image_paths = data[self.mode]["images"]
+            kvasir_image_paths = []
+            clinic_image_paths = []
+            for image_path in all_image_paths:
+                if "c" in image_path:
+                    kvasir_image_paths.append(image_path)
+                else:
+                    clinic_image_paths.append(image_path)
+        
+            all_mask_paths = data[self.mode]["masks"]
+            kvasir_mask_paths = []
+            clinic_mask_paths = []
+            for mask_path in all_mask_paths:
+                if "c" in mask_path:
+                    kvasir_mask_paths.append(mask_path)
+                else:
+                    clinic_mask_paths.append(mask_path)
+            print(f"Pre len(all_image_paths) = {len(all_image_paths)}")
+            print(f"Pre len(all_mask_paths) = {len(all_mask_paths)}")
+            self.image_paths = kvasir_image_paths[:int(len(kvasir_image_paths)*self.train_ratio)] + clinic_image_paths[:int(len(clinic_image_paths)*self.train_ratio)]
+            self.mask_paths = kvasir_mask_paths[:int(len(kvasir_mask_paths)*self.train_ratio)] + clinic_mask_paths[:int(len(clinic_mask_paths)*self.train_ratio)]
+            print(f"After len(image_paths) = {len(self.image_paths)}")
+            print(f"After len(mask_paths) = {len(self.mask_paths)}")
+        elif self.mode == "test":
+            self.image_paths = data[self.mode][self.ds_test]["images"]
+            self.mask_paths = data[self.mode][self.ds_test]["masks"]
 
     def __getitem__(self, idx):
-        img_path = self.img_paths[idx]
-        mask_path = self.mask_paths[idx]
+        img_path = os.path.join(self.root_path, self.image_paths[idx])
+        mask_path = os.path.join(self.root_path, self.mask_paths[idx])
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         mask = cv2.imread(mask_path, 0)
@@ -196,6 +236,8 @@ class Dataset(torch.utils.data.Dataset):
             augmented = self.transform(image=image, mask=mask)
             image = augmented['image']
             mask = augmented['mask']
+            image = cv2.resize(image, (384, 384))
+            mask = cv2.resize(mask, (384, 384)) 
         else:
             image = cv2.resize(image, (384, 384))
             mask = cv2.resize(mask, (384, 384)) 
@@ -278,11 +320,12 @@ def structure_loss(pred, mask):
 def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
     model.train()
     # ---- multi-scale training ----
-    size_rates = [0.75, 1, 1.25]
+    # size_rates = [0.75, 1, 1.25]
+    size_rates = [256, 384, 512]
     loss_record = AvgMeter()
     dice, iou = AvgMeter(), AvgMeter()
     with torch.autograd.set_detect_anomaly(True):
-        for i, pack in enumerate(train_loader, start=1):
+        for i, pack in tqdm(enumerate(train_loader, start=1), total=len(train_loader)):
             if epoch <= 1:
                     optimizer.param_groups[0]["lr"] = (epoch * i) / (1.0 * total_step) * args.init_lr
             else:
@@ -292,10 +335,11 @@ def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
                 optimizer.zero_grad()
                 # ---- data prepare ----
                 images, gts = pack
-                images = Variable(images).cuda()
-                gts = Variable(gts).cuda()
+                images = Variable(images).to(device)
+                gts = Variable(gts).to(device)
                 # ---- rescale ----
                 trainsize = int(round(args.init_trainsize*rate/32)*32)
+                trainsize = rate
                 images = F.upsample(images, size=(trainsize, trainsize), mode='bilinear', align_corners=True)
                 gts = F.upsample(gts, size=(trainsize, trainsize), mode='bilinear', align_corners=True)
                 # ---- forward ----
@@ -336,16 +380,17 @@ def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
         'scheduler': lr_scheduler.state_dict()
     }
     torch.save(checkpoint, ckpt_path)
-from albumentations.augmentations.geometric import  resize,rotate
+from albumentations.augmentations.geometric import  resize,rotate, Flip, Transpose
 import albumentations.augmentations.crops.transforms as crop
 import albumentations.augmentations.transforms as transforms
+from albumentations.augmentations.blur import GaussianBlur
 train_transform = Compose([
             rotate.RandomRotate90(),
-            transforms.Flip(),
+            Flip(),
             transforms.HueSaturationValue(),
             transforms.RandomBrightnessContrast(),
-            transforms.GaussianBlur(),
-            transforms.Transpose(),
+            GaussianBlur(),
+            Transpose(),
             OneOf([
                 crop.RandomCrop(224, 224, p=1),
                 crop.CenterCrop(224, 224, p=1)
@@ -367,7 +412,7 @@ if __name__ == '__main__':
     parser.add_argument('--init_lr', type=float,
                         default=1e-4, help='learning rate')
     parser.add_argument('--batchsize', type=int,
-                        default=8, help='training batch size')
+                        default=4, help='training batch size')
     parser.add_argument('--init_trainsize', type=int,
                         default=384, help='training dataset size')
     parser.add_argument('--clip', type=float,
@@ -376,7 +421,7 @@ if __name__ == '__main__':
                         default='./data/TrainDataset', help='path to train dataset')
     parser.add_argument('--train_save', type=str,
                         default='RaBiTB3')
-    parser.add_argument('--resume_path', type=str, help='path to checkpoint for resume training'
+    parser.add_argument('--resume_path', type=str, help='path to checkpoint for resume training',
                         default='')
     args = parser.parse_args()
 
@@ -393,9 +438,9 @@ if __name__ == '__main__':
     train_img_paths.sort()
     train_mask_paths.sort()
     if args.num_classes ==1:
-        train_dataset = Dataset(train_img_paths, train_mask_paths, transform =train_transform)
-    elif args.num_classes ==3:
-        train_dataset = NeoDataset(train_img_paths, train_mask_paths, transform =train_transform )
+        train_dataset = Dataset(train_img_paths, train_mask_paths, transform=train_transform, train_ratio=0.5)
+    # elif args.num_classes ==3:
+    #     train_dataset = NeoDataset(train_img_paths, train_mask_paths, transform =train_transform )
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.batchsize,
@@ -417,7 +462,7 @@ if __name__ == '__main__':
                 compound_coef=4,
                 neo=args.neo,numrepeat = 4,bottleneck=args.bottleneck,
                 test_cfg=dict(mode='whole'),
-                pretrained='pretrained/mit_{}.pth'.format(args.backbone)).cuda()
+                pretrained='pretrained/mit_{}.pth'.format(args.backbone)).to(device)
 
     # ---- flops and params ----
     params = model.parameters()
