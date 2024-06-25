@@ -9,11 +9,12 @@ import cv2
 from tqdm import tqdm
 from glob import glob
 import torch
+import torch.nn.functional as F
 
 from mmseg import __version__
 from mmseg.models.segmentors import BiRAFormer as UNet
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 class Dataset(torch.utils.data.Dataset):
     
     def __init__(self, img_paths, mask_paths, aug=True, transform=None):
@@ -100,6 +101,7 @@ def inference(model, args):
     model.eval()
     
     X_test = glob('{}/images/*'.format(args.test_path))
+    print(len(X_test))
     X_test.sort()
     y_test = glob('{}/masks/*'.format(args.test_path))
     y_test.sort()
@@ -160,7 +162,7 @@ if __name__ == '__main__':
                 pretrained='pretrained/mit_{}.pth'.format(args.backbone)).cuda()
 
     if args.weight != '':
-        checkpoint = torch.load(ckpt_path)
+        checkpoint = torch.load(args.weight)
         model.load_state_dict(checkpoint['state_dict'])
 
     inference(model, args)

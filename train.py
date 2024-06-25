@@ -359,7 +359,7 @@ def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
                 clip_gradient(optimizer, args.clip)
                 optimizer.step()
                 # ---- recording loss ----
-                if rate == 1:
+                if rate == 384:
                     loss_record.update(loss.data, args.batchsize)
                     dice.update(dice_score.data, args.batchsize)
                     iou.update(iou_score.data, args.batchsize)
