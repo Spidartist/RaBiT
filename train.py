@@ -8,7 +8,7 @@ import numpy as np
 import cv2
 from tqdm import tqdm
 from glob import glob
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import json
 import torch
 import torch.nn as nn
@@ -25,7 +25,7 @@ from albumentations.core.composition import Compose, OneOf
 from mmseg import __version__
 from mmseg.models.segmentors import BiRAFormer as UNet
 
-from PIL import Image
+# from PIL import Image
 # from keras.utils.np_utils import to_categorical   
 # Convert numpy data to tensorflow data
 '''
@@ -42,7 +42,7 @@ HEIGHT = 384
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-device = torch.device('cuda:0')
+device = torch.device('cuda:1')
 torch.cuda.set_device(device)
 
 sometimes = lambda aug: iaa.Sometimes(.5, aug)   
@@ -182,13 +182,14 @@ import random
 #         return np.asarray(image), np.asarray(mask)
 class Dataset(torch.utils.data.Dataset):
     
-    def __init__(self, img_paths, mask_paths, aug=True, transform=None, train_ratio=1.0, mode="train"):
+    def __init__(self,  img_paths, mask_paths, aug=True, transform=None, train_ratio=1.0, mode="train", type="ung_thu_da_day_20230620"):
         self.aug = aug
         self.transform = transform
         self.train_ratio = train_ratio
-        self.path = "/mnt/quanhd/endoscopy/public_dataset.json"
+        self.path = "/mnt/quanhd/endoscopy/ft_ton_thuong.json"
         self.root_path = "/home/s/DATA/"
         self.mode = mode
+        self.type = type
         self.load_data_from_json()
 
     def __len__(self):
@@ -198,32 +199,15 @@ class Dataset(torch.utils.data.Dataset):
         with open(self.path) as f:
             data = json.load(f)
         if self.mode == "train":
-            all_image_paths = data[self.mode]["images"]
-            kvasir_image_paths = []
-            clinic_image_paths = []
-            for image_path in all_image_paths:
-                if "c" in image_path:
-                    kvasir_image_paths.append(image_path)
-                else:
-                    clinic_image_paths.append(image_path)
-        
-            all_mask_paths = data[self.mode]["masks"]
-            kvasir_mask_paths = []
-            clinic_mask_paths = []
-            for mask_path in all_mask_paths:
-                if "c" in mask_path:
-                    kvasir_mask_paths.append(mask_path)
-                else:
-                    clinic_mask_paths.append(mask_path)
-            print(f"Pre len(all_image_paths) = {len(all_image_paths)}")
-            print(f"Pre len(all_mask_paths) = {len(all_mask_paths)}")
-            self.image_paths = kvasir_image_paths[:int(len(kvasir_image_paths)*self.train_ratio)] + clinic_image_paths[:int(len(clinic_image_paths)*self.train_ratio)]
-            self.mask_paths = kvasir_mask_paths[:int(len(kvasir_mask_paths)*self.train_ratio)] + clinic_mask_paths[:int(len(clinic_mask_paths)*self.train_ratio)]
-            print(f"After len(image_paths) = {len(self.image_paths)}")
-            print(f"After len(mask_paths) = {len(self.mask_paths)}")
+            image_paths = data[self.type][self.mode]["images"]
+            mask_paths = data[self.type][self.mode]["masks"]
+            print(len(image_paths))
+            self.image_paths = image_paths[:int(self.train_ratio*len(image_paths))]
+            self.mask_paths = mask_paths[:int(self.train_ratio*len(mask_paths))]
+            print(len(self.image_paths))
         elif self.mode == "test":
-            self.image_paths = data[self.mode][self.ds_test]["images"]
-            self.mask_paths = data[self.mode][self.ds_test]["masks"]
+            self.image_paths = data[self.type][self.mode]["images"]
+            self.mask_paths = data[self.type][self.mode]["masks"]
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.root_path, self.image_paths[idx])
@@ -359,7 +343,7 @@ def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
                 clip_gradient(optimizer, args.clip)
                 optimizer.step()
                 # ---- recording loss ----
-                if rate == 1:
+                if rate == 384:
                     loss_record.update(loss.data, args.batchsize)
                     dice.update(dice_score.data, args.batchsize)
                     iou.update(iou_score.data, args.batchsize)
@@ -403,6 +387,8 @@ if __name__ == '__main__':
                         default=30, help='epoch number')
     parser.add_argument('--backbone', type=str,
                         default='b3', help='backbone version')
+    parser.add_argument('--type', type=str,
+                        default='', help='backbone version')
     parser.add_argument('--num_classes', type=int,
                         default=1, help='number output classes')
     parser.add_argument('--bottleneck', type=bool,
@@ -425,7 +411,7 @@ if __name__ == '__main__':
                         default='')
     args = parser.parse_args()
 
-    save_path = 'snapshots/{}/'.format(args.train_save)
+    save_path = f'snapshots/{args.train_save}_{args.type}/'
     if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
     else:
@@ -438,7 +424,7 @@ if __name__ == '__main__':
     train_img_paths.sort()
     train_mask_paths.sort()
     if args.num_classes ==1:
-        train_dataset = Dataset(train_img_paths, train_mask_paths, transform=train_transform, train_ratio=0.5)
+        train_dataset = Dataset(train_img_paths, train_mask_paths, transform=train_transform, train_ratio=0.5, type=args.type)
     # elif args.num_classes ==3:
     #     train_dataset = NeoDataset(train_img_paths, train_mask_paths, transform =train_transform )
     train_loader = torch.utils.data.DataLoader(

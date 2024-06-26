@@ -14,9 +14,7 @@ from mmseg.ops import resize
 from ..builder import HEADS
 from .decode_head import BaseDecodeHead
 from mmseg.models.utils import *
-import attr
 
-from IPython import embed
 
 class BasicConv2d(nn.Module):
     def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1):
