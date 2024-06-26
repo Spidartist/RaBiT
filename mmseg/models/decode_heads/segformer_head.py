@@ -13,7 +13,6 @@ from mmseg.ops import resize
 from ..builder import HEADS
 from .decode_head import BaseDecodeHead
 from mmseg.models.utils import *
-import attr
 
 from IPython import embed
 
