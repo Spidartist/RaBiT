@@ -74,6 +74,32 @@ def iou_np(y_true, y_pred):
     union = np.sum(y_true)+np.sum(y_pred)-intersection
     return intersection/(union+epsilon)
 
+def get_micro_scores(gts, prs): # Micro
+    mean_precision = 0
+    mean_recall = 0
+    mean_iou = 0
+    mean_dice = 0
+
+    total_area_intersect = 0
+    total_area_union = 0
+    total_pr = 0
+    total_gt = 0
+
+    for gt, pr in zip(gts, prs):
+        total_area_intersect += torch.sum(torch.round(torch.clip(gt * pr, 0, 1)))
+        total_area_union += torch.sum(torch.round(torch.clip(gt + pr, 0, 1)))
+        total_pr += torch.sum(torch.round(torch.clip(pr, 0, 1)))
+        total_gt += torch.sum(torch.round(torch.clip(gt, 0, 1)))
+
+    mean_precision = total_area_intersect / (total_pr + epsilon)
+    mean_recall = total_area_intersect / (total_gt + epsilon)
+    mean_iou = total_area_intersect / (total_area_union + epsilon)
+    mean_dice = 2 * total_area_intersect / (total_pr + total_gt + epsilon)
+
+    print("Micro scores: dice={}, miou={}, precision={}, recall={}".format(mean_dice, mean_iou, mean_precision, mean_recall))
+
+    return (mean_iou, mean_dice, mean_precision, mean_recall)
+
 def get_scores(gts, prs):
     mean_precision = 0
     mean_recall = 0
@@ -90,7 +116,7 @@ def get_scores(gts, prs):
     mean_iou /= len(gts)
     mean_dice /= len(gts)        
     
-    print("scores: dice={}, miou={}, precision={}, recall={}".format(mean_dice, mean_iou, mean_precision, mean_recall))
+    print("Macro scores: dice={}, miou={}, precision={}, recall={}".format(mean_dice, mean_iou, mean_precision, mean_recall))
 
     return (mean_iou, mean_dice, mean_precision, mean_recall)
 
@@ -130,6 +156,7 @@ def inference(model, args):
         gts.append(gt)
         prs.append(pr)
     get_scores(gts, prs)
+    get_micro_scores(gts, prs)
 
 
 if __name__ == '__main__':

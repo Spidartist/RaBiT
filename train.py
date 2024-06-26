@@ -42,7 +42,7 @@ HEIGHT = 384
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-device = torch.device('cuda:1')
+device = torch.device('cuda:0')
 torch.cuda.set_device(device)
 
 sometimes = lambda aug: iaa.Sometimes(.5, aug)   
@@ -186,8 +186,8 @@ class Dataset(torch.utils.data.Dataset):
         self.aug = aug
         self.transform = transform
         self.train_ratio = train_ratio
-        self.path = "/mnt/quanhd/endoscopy/ft_ton_thuong.json"
-        self.root_path = "/home/s/DATA/"
+        self.path = "/root/quanhd/endoscopy/ft_ton_thuong.json"
+        self.root_path = "/root/quanhd/DATA"
         self.mode = mode
         self.type = type
         self.load_data_from_json()
@@ -398,7 +398,7 @@ if __name__ == '__main__':
     parser.add_argument('--init_lr', type=float,
                         default=1e-4, help='learning rate')
     parser.add_argument('--batchsize', type=int,
-                        default=4, help='training batch size')
+                        default=8, help='training batch size')
     parser.add_argument('--init_trainsize', type=int,
                         default=384, help='training dataset size')
     parser.add_argument('--clip', type=float,
