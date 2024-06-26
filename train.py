@@ -355,7 +355,7 @@ def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
                         format(datetime.now(), epoch, args.num_epochs,\
                                 loss_record.show(), dice.show(), iou.show()))
 
-    ckpt_path = save_path + 'last.pth'
+    ckpt_path = save_path + 'last_new.pth'
     print('[Saving Checkpoint:]', ckpt_path)
     checkpoint = {
         'epoch': epoch + 1,
@@ -424,7 +424,7 @@ if __name__ == '__main__':
     train_img_paths.sort()
     train_mask_paths.sort()
     if args.num_classes ==1:
-        train_dataset = Dataset(train_img_paths, train_mask_paths, transform=train_transform, train_ratio=0.5, type=args.type)
+        train_dataset = Dataset(train_img_paths, train_mask_paths, transform=train_transform, train_ratio=1.0, type=args.type)
     # elif args.num_classes ==3:
     #     train_dataset = NeoDataset(train_img_paths, train_mask_paths, transform =train_transform )
     train_loader = torch.utils.data.DataLoader(

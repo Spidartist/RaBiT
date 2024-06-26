@@ -10,25 +10,78 @@ from tqdm import tqdm
 from glob import glob
 import torch
 import torch.nn.functional as F
-
+import json
 from mmseg import __version__
 from mmseg.models.segmentors import BiRAFormer as UNet
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# class Dataset(torch.utils.data.Dataset):
+    
+#     def __init__(self, img_paths, mask_paths, aug=True, transform=None):
+#         self.img_paths = img_paths
+#         self.mask_paths = mask_paths
+#         self.aug = aug
+#         self.transform = transform
+
+#     def __len__(self):
+#         return len(self.img_paths)
+
+#     def __getitem__(self, idx):
+#         img_path = self.img_paths[idx]
+#         mask_path = self.mask_paths[idx]
+#         image = cv2.imread(img_path)
+#         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+#         mask = cv2.imread(mask_path, 0)
+
+#         if self.transform is not None:
+#             augmented = self.transform(image=image, mask=mask)
+#             image = augmented['image']
+#             mask = augmented['mask']
+#         else:
+#             image = cv2.resize(image, (384, 384))
+#             mask = cv2.resize(mask, (384, 384)) 
+
+#         image = image.astype('float32') / 255
+#         image = image.transpose((2, 0, 1))
+
+#         mask = mask[:,:,np.newaxis]
+#         mask = mask.astype('float32') / 255
+#         mask = mask.transpose((2, 0, 1))
+
+#         return np.asarray(image), np.asarray(mask)
+
 class Dataset(torch.utils.data.Dataset):
     
-    def __init__(self, img_paths, mask_paths, aug=True, transform=None):
-        self.img_paths = img_paths
-        self.mask_paths = mask_paths
+    def __init__(self,  img_paths, mask_paths, aug=True, transform=None, train_ratio=1.0, mode="train", type="ung_thu_da_day_20230620"):
         self.aug = aug
         self.transform = transform
+        self.train_ratio = train_ratio
+        self.path = "/root/quanhd/endoscopy/ft_ton_thuong.json"
+        self.root_path = "/root/quanhd/DATA"
+        self.mode = mode
+        self.type = type
+        self.load_data_from_json()
 
     def __len__(self):
-        return len(self.img_paths)
+        return len(self.image_paths)
+    
+    def load_data_from_json(self):
+        with open(self.path) as f:
+            data = json.load(f)
+        if self.mode == "train":
+            image_paths = data[self.type][self.mode]["images"]
+            mask_paths = data[self.type][self.mode]["masks"]
+            print(len(image_paths))
+            self.image_paths = image_paths[:int(self.train_ratio*len(image_paths))]
+            self.mask_paths = mask_paths[:int(self.train_ratio*len(mask_paths))]
+            print(len(self.image_paths))
+        elif self.mode == "test":
+            self.image_paths = data[self.type][self.mode]["images"]
+            self.mask_paths = data[self.type][self.mode]["masks"]
 
     def __getitem__(self, idx):
-        img_path = self.img_paths[idx]
-        mask_path = self.mask_paths[idx]
+        img_path = os.path.join(self.root_path, self.image_paths[idx])
+        mask_path = os.path.join(self.root_path, self.mask_paths[idx])
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         mask = cv2.imread(mask_path, 0)
@@ -37,6 +90,8 @@ class Dataset(torch.utils.data.Dataset):
             augmented = self.transform(image=image, mask=mask)
             image = augmented['image']
             mask = augmented['mask']
+            image = cv2.resize(image, (384, 384))
+            mask = cv2.resize(mask, (384, 384)) 
         else:
             image = cv2.resize(image, (384, 384))
             mask = cv2.resize(mask, (384, 384)) 
@@ -132,7 +187,8 @@ def inference(model, args):
     y_test = glob('{}/masks/*'.format(args.test_path))
     y_test.sort()
 
-    test_dataset = Dataset(X_test, y_test)
+    test_dataset = Dataset(X_test, y_test, train_ratio=1.0, type=args.type, mode="test")
+
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
         batch_size=1,
@@ -165,6 +221,8 @@ if __name__ == '__main__':
                         default='b3')
     parser.add_argument('--weight', type=str,
                         default='')
+    parser.add_argument('--type', type=str,
+                        default='', help='backbone version')
     parser.add_argument('--test_path', type=str,
                         default='./data/TestDataset', help='path to dataset')
     parser.add_argument('--num_classes', type=int,

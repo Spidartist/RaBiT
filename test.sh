@@ -1,20 +1,4 @@
 python test.py \
       --backbone b3 \
-      --weight /mnt/quanhd/RaBiT/snapshots/RaBiT/last.pth \
-      --test_path /home/s/DATA/public_dataset/TestDataset/CVC-300
-python test.py \
-      --backbone b3 \
-      --weight /mnt/quanhd/RaBiT/snapshots/RaBiT/last.pth \
-      --test_path /home/s/DATA/public_dataset/TestDataset/Kvasir
-python test.py \
-      --backbone b3 \
-      --weight /mnt/quanhd/RaBiT/snapshots/RaBiT/last.pth \
-      --test_path /home/s/DATA/public_dataset/TestDataset/CVC-ClinicDB
-python test.py \
-      --backbone b3 \
-      --weight /mnt/quanhd/RaBiT/snapshots/RaBiT/last.pth \
-      --test_path /home/s/DATA/public_dataset/TestDataset/CVC-ColonDB
-python test.py \
-      --backbone b3 \
-      --weight /mnt/quanhd/RaBiT/snapshots/RaBiT/last.pth \
-      --test_path /home/s/DATA/public_dataset/TestDataset/ETIS-LaribPolypDB
+      --weight /root/quanhd/RaBiT/snapshots/RaBiT_lesion_ung_thu_da_day_20230620/last_new.pth \
+      --type ung_thu_da_day_20230620
