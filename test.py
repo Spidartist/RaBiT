@@ -56,8 +56,8 @@ class Dataset(torch.utils.data.Dataset):
         self.aug = aug
         self.transform = transform
         self.train_ratio = train_ratio
-        self.path = "/root/quanhd/endoscopy/ft_ton_thuong.json"
-        self.root_path = "/root/quanhd/DATA"
+        self.path = "/mnt/quanhd/endoscopy/ft_ton_thuong.json"
+        self.root_path = "/mnt/tuyenld/data/endoscopy/"
         self.mode = mode
         self.type = type
         self.load_data_from_json()
@@ -107,27 +107,27 @@ class Dataset(torch.utils.data.Dataset):
 
 epsilon = 1e-7
 
-def recall_np(y_true, y_pred):
-    true_positives = np.sum(np.round(np.clip(y_true * y_pred, 0, 1)))
-    possible_positives = np.sum(np.round(np.clip(y_true, 0, 1)))
+def recall_m(y_true, y_pred):
+    true_positives = torch.sum(torch.round(torch.clip(y_true * y_pred, 0, 1)))
+    possible_positives = torch.sum(torch.round(torch.clip(y_true, 0, 1)))
     recall = true_positives / (possible_positives + epsilon)
     return recall
 
-def precision_np(y_true, y_pred):
-    true_positives = np.sum(np.round(np.clip(y_true * y_pred, 0, 1)))
-    predicted_positives = np.sum(np.round(np.clip(y_pred, 0, 1)))
+def precision_m(y_true, y_pred):
+    true_positives = torch.sum(torch.round(torch.clip(y_true * y_pred, 0, 1)))
+    predicted_positives = torch.sum(torch.round(torch.clip(y_pred, 0, 1)))
     precision = true_positives / (predicted_positives + epsilon)
     return precision
 
-def dice_np(y_true, y_pred):
-    precision = precision_np(y_true, y_pred)
-    recall = recall_np(y_true, y_pred)
+def dice_m(y_true, y_pred):
+    precision = precision_m(y_true, y_pred)
+    recall = recall_m(y_true, y_pred)
     return 2*((precision*recall)/(precision+recall+epsilon))
 
-def iou_np(y_true, y_pred):
-    intersection = np.sum(np.round(np.clip(y_true * y_pred, 0, 1)))
-    union = np.sum(y_true)+np.sum(y_pred)-intersection
-    return intersection/(union+epsilon)
+def iou_m(y_true, y_pred):
+    precision = precision_m(y_true, y_pred)
+    recall = recall_m(y_true, y_pred)
+    return recall*precision/(recall+precision-recall*precision + epsilon)
 
 def get_micro_scores(gts, prs): # Micro
     mean_precision = 0
@@ -161,10 +161,10 @@ def get_scores(gts, prs):
     mean_iou = 0
     mean_dice = 0
     for gt, pr in zip(gts, prs):
-        mean_precision += precision_np(gt, pr)
-        mean_recall += recall_np(gt, pr)
-        mean_iou += iou_np(gt, pr)
-        mean_dice += dice_np(gt, pr)
+        mean_precision += precision_m(gt, pr)
+        mean_recall += recall_m(gt, pr)
+        mean_iou += iou_m(gt, pr)
+        mean_dice += dice_m(gt, pr)
 
     mean_precision /= len(gts)
     mean_recall /= len(gts)
@@ -191,28 +191,28 @@ def inference(model, args):
 
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=1,
+        batch_size=8,
         shuffle=False,
         pin_memory=True,
         drop_last=False)
 
-    gts = []
-    prs = []
+    gt_, pr_ = [], []
     for i, pack in enumerate(test_loader, start=1):
-        image, gt = pack
-        gt = gt[0][0]
-        gt = np.asarray(gt, np.float32)
-        image = image.cuda()
+        images, gts = pack
+        images = images.cuda()
+        gts = gts.cuda()
 
-        res, res2, res3, res4 = model(image)
-        res = F.upsample(res, size=gt.shape, mode='bilinear', align_corners=False)
-        res = res.sigmoid().data.cpu().numpy().squeeze()
-        res = (res - res.min()) / (res.max() - res.min() + 1e-8)
+        res, _, _, _ = model(images)
+        res = F.upsample(res, size=(384, 384), mode='bilinear', align_corners=False)
+        res = res.sigmoid().data.cpu().squeeze()
         pr = res.round()
-        gts.append(gt)
-        prs.append(pr)
-    get_scores(gts, prs)
-    get_micro_scores(gts, prs)
+        gts = gts.data.cpu().squeeze()
+        for gt, pr in zip(gts, pr):
+            gt_.append(gt)
+            pr_.append(pr)
+
+    get_scores(gt_, pr_)
+    get_micro_scores(gt_, pr_)
 
 
 if __name__ == '__main__':

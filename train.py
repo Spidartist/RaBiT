@@ -186,8 +186,8 @@ class Dataset(torch.utils.data.Dataset):
         self.aug = aug
         self.transform = transform
         self.train_ratio = train_ratio
-        self.path = "/root/quanhd/endoscopy/ft_ton_thuong.json"
-        self.root_path = "/root/quanhd/DATA"
+        self.path = "/mnt/quanhd/endoscopy/ft_ton_thuong.json"
+        self.root_path = "/mnt/tuyenld/data/endoscopy"
         self.mode = mode
         self.type = type
         self.load_data_from_json()
@@ -305,7 +305,8 @@ def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
     model.train()
     # ---- multi-scale training ----
     # size_rates = [0.75, 1, 1.25]
-    size_rates = [256, 384, 512]
+    # size_rates = [256, 384, 512]
+    size_rates = [384, 512]
     loss_record = AvgMeter()
     dice, iou = AvgMeter(), AvgMeter()
     with torch.autograd.set_detect_anomaly(True):
@@ -347,6 +348,7 @@ def train(train_loader, model, optimizer, epoch, lr_scheduler, args):
                     loss_record.update(loss.data, args.batchsize)
                     dice.update(dice_score.data, args.batchsize)
                     iou.update(iou_score.data, args.batchsize)
+                break
 
             # ---- train visualization ----
             if i == total_step:
